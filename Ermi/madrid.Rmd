@@ -1,0 +1,464 @@
+---
+title: "madrid"
+author: "Ermioni Athanasiadi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, warning=FALSE}
+library(tidyverse)
+library(hrbrthemes)
+library(viridis)
+library(data.table)
+library(gtsummary)
+library(mice)
+```
+
+
+```{r}
+prefix <- "madrid_"
+years <- seq(2001, 2018, 1)
+
+files <- paste0(prefix, years)
+
+
+
+temp <- list.files(path="./VDS2526_Madrid/", pattern="\\.csv$")
+
+
+stations <- read.csv("./VDS2526_Madrid/stations.csv")
+```
+
+
+
+```{r}
+setwd("./VDS2526_Madrid/")
+
+allfiles <- lapply(temp, read.csv)
+
+allfiles <- allfiles[-19] # remove stations file
+
+stations <- read.csv("./stations.csv")
+
+```
+
+
+```{r}
+View(allfiles[[1]])
+```
+
+Transform allfiles into dataframe
+```{r}
+allfiles_df <- bind_rows(allfiles)
+```
+
+Merge with stations file
+```{r}
+df <- right_join(allfiles_df, stations, by = c("station"="id"))
+```
+
+Save all time-related information as distinct variables:
+Code from kaggle: https://www.kaggle.com/code/gloriousc/madrid-s-air-quality-with-arima-forecasting/script 
+```{r}
+df$date <- as.POSIXct(df$date, format = "%Y-%m-%d %H:%M:%S")
+df$Date <- format(df$date, "%Y-%m-%d")
+df$Time <- format(df$date, "%T")
+df$Date <- as.POSIXct(df$Date, format = "%Y-%m-%d")
+
+df$day <- format(df$date, "%d")
+df$month <- format(df$date, "%m")
+df$year <- format(df$date, "%Y")
+df$hour <- format(df$date, "%H")
+```
+
+
+This is time series data, and we are dealing with an extremely large dataset. We have > 20 different stations, for each station, we have data from 18 years, for each year there are > 8000 observations. 
+
+*Brainstorm analysis ideas for this dataset*
+
+- How does pollution vary within time of the year, time of the month, time of the day?
+- How does pollution differ between more elevated and less elevated stations in Madrid?
+- Do different pollutants evolve differently by station? 
+- Stationarity and Structure: constant means, constant variances for which stations, for which pollutants?
+- Anomaly detection: are there significant points of change? 
+- what is the forecast for pollution in the next 5 years? (e.g. ARIMA)
+
+
+
+
+Now let's explore the missingness of single pollutants in the dataset in more detail
+```{r}
+tab1 <- df %>%
+    select(year, station, CO) %>%
+    filter(station == "28079035") %>%
+    group_by(year) %>%
+    summarise(
+        mean_co = mean(CO, na.rm = T),
+        sd_CO = sd(CO, na.rm = T),
+        length = n(),
+        pmiss = sum(is.na(CO)) / n() * 100
+    ) %>%
+    mutate(
+        across(where(is.numeric), ~ round(.x, 2))
+    )
+tab1
+```
+
+Let's look at how missingness in pollutants varies across stations
+```{r}
+df_summ <- df %>% select(2:15, 17:19)
+
+gtsummary::tbl_summary(df_summ, missing_stat = "{p_miss}", by = "station")
+```
+
+
+
+```{r}
+
+
+df %>%
+    select(2:19) %>%
+    summarise(
+        CO = mean(CO, na.rm = T),
+        sd_CO = meean(CO, na.rm = T),
+        length = n(),
+        pmiss = sum(is.na(CO)) / n() * 100
+    ) %>%
+    mutate(
+        across(where(is.numeric), ~ round(.x, 2))
+    )
+
+```
+
+
+
+```{r}
+mice::md.pattern(df %>% select("CO", year))
+```
+
+```{r}
+
+```
+We need to obtain an overview of how missingness patterns are similar across pollutants, stations and years: is a missing
+
+```{r}
+df %>%
+    select(2:19) %>%
+    summarise(
+        CO = mean(CO, na.rm = T),
+        sd_CO = meean(CO, na.rm = T),
+        length = n(),
+        pmiss = sum(is.na(CO)) / n() * 100
+    ) %>%
+    mutate(
+        across(where(is.numeric), ~ round(.x, 2))
+    )
+
+```
+
+```{r}
+df %>%
+    select(year, station, CO) %>%
+    filter(station == "28079035") %>%
+    group_by(year) %>%
+    ggplot(aes(y = CO, x = year)) +
+    geom_boxplot()
+```
+
+```{r}
+draw_boxplots <- function(df, stationX) {
+    df %>%
+    select(year, station, CO) %>%
+    filter(station == stationX) %>%
+    group_by(year) %>%
+    ggplot(aes(y = CO, x = year)) +
+    geom_boxplot()
+}
+```
+
+
+```{r, echo=FALSE}
+stations <- df %>%
+    pull(station) %>%
+    unique()
+
+lapply(stations, function(x) draw_boxplots(df, x))
+
+```
+
+```{r}
+
+# heatmap given the pollution level for each year and for each hour of the day
+
+stat = "28079039"
+
+
+heatmap_example <- df %>%
+    filter(station == stat) %>%
+    group_by(year, hour) %>%
+    summarise(
+        `Mean Pollution` = mean(O_3, na.rm = T)
+    ) %>%
+    ggplot(aes(x = year, y = hour, fill = `Mean Pollution`)) +
+    geom_tile() +
+    scale_fill_viridis(discrete=FALSE) +
+    theme_ipsum()
+
+ggsave("heatmap_example.png", heatmap_example, width = 5, height = 4)
+
+df %>%
+    filter(station == stat) %>%
+    group_by(year, hour) %>%
+    summarise(
+        mean_pollution = mean(NO_2, na.rm = T)
+    ) %>%
+    ggplot(aes(x = year, y = hour, fill = mean_pollution)) +
+    geom_tile()
+
+```
+
+```{r}
+# DEBUG THIS
+meta_cols <- c(
+  "source_year", "source_file", "date", "station", "datetime",
+  "year", "month", "month_label", "day", "hour", "wday_label",
+  "season", "day_night"
+)
+
+pollutant_cols <- setdiff(names(df), meta_cols)
+
+df_long <- reshape2::melt(
+  df,
+  id.vars = meta_cols[meta_cols %in% names(df)],
+  measure.vars = pollutant_cols,
+  variable.name = "pollutant",
+  value.name = "value",
+  variable.factor = FALSE
+)
+
+df_long[, pollutant := as.character(pollutant)]
+
+missing_by_pollutant <- df_long[, .(
+  n_total = .N,
+  n_missing = sum(is.na(value)),
+  pct_missing = 100 * mean(is.na(value))
+), by = pollutant][order(-pct_missing)]
+```
+
+```{r}
+pollutant_cols <- c("BEN","CO","EBE","MXY","NMHC","NO_2","NOx",
+                "OXY","O_3","PM10","PXY","SO_2","TCH","TOL",
+                "PM25","NO","CH4")
+
+miss_long <- df %>%
+    select(
+        station, year, all_of(pollutant_cols) 
+    ) %>%
+    pivot_longer(all_of(pollutant_cols), names_to = "pollutant", values_to = "value") %>%
+    group_by(station, year, pollutant) %>%
+    summarise(
+        n_total = n(),
+        n_miss = sum(is.na(value)),
+        pct_miss = 100*n_miss / n_total,
+        .groups = "drop"
+    )
+
+miss_long %>% arrange(desc(pct_miss), station, year, pollutant) %>% View()
+```
+
+Ok, lets see which stations suffered the most missingness:
+
+28079004
+
+```{r}
+station_summ <- miss_long %>%
+  group_by(station, pollutant) %>%
+  summarise(pct_miss = mean(pct_miss), .groups = "drop")
+
+ggplot(station_summ, aes(x = pollutant, y = station, fill = pct_miss)) +
+  geom_tile(colour = "white", linewidth = 0.4) +
+  scale_y_discrete(limits = rev(unique(station_summ$station))) +  # rev() puts first station at top
+  scale_fill_gradientn(
+    colours = c("#2166ac","#f7f7f7","#d73027"),
+    values  = scales::rescale(c(0, 50, 100)),
+    limits  = c(0, 100),
+    name    = "% missing"
+  ) +
+  labs(
+    title = "Missingness by station and pollutant",
+    x = NULL, y = NULL
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid   = element_blank()
+  )
+```
+We comment on the missingness in the data based on the pollutants:
+
+BEN
+CO
+EBE
+MXY
+NMHC
+NO2     largely observed in all stations!
+NOx
+OXY
+O3
+PM10
+PXY     Only observed in 2 stations: 28079024, 28079035
+SO2
+TCH
+TOL
+PM25
+NO      some missingness, but for now station missing completely
+CH4     was only observed in 3 stations: 28079008, 28079024, 28079055
+
+
+Lets look only at the pollutants which are listed in he WHO guidelines:
+https://www.who.int/teams/environment-climate-change-and-health/air-quality-and-health/health-impacts/types-of-pollutants 
+
+PM10
+PM25
+CO
+NO2
+SO2
+O3
+
+
+
+
+```{r}
+year_summ <- miss_long %>%
+  group_by(year, pollutant) %>%
+  summarise(pct_miss = mean(pct_miss), .groups = "drop")
+
+ggplot(year_summ, aes(x = pollutant, y = year, fill = pct_miss)) +
+  geom_tile(colour = "white", linewidth = 0.4) +
+  scale_y_discrete(limits = rev(unique(year_summ$year))) +  # rev() puts first station at top
+  scale_fill_gradientn(
+    colours = c("#2166ac","#f7f7f7","#d73027"),
+    values  = scales::rescale(c(0, 50, 100)),
+    limits  = c(0, 100),
+    name    = "% missing"
+  ) +
+  labs(
+    title = "Missingness by year and pollutant",
+    x = NULL, y = NULL
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid   = element_blank()
+  )
+```
+
+We have data from all the years for NO2. Also, O3 and PM10 are largely observed in each year. After that, CO and SO2 are available.
+NO only from 2011 onwards, while NOx only until 2010.
+
+We can look at this pattern for each station separately:
+
+
+```{r}
+draw_heatmaps <- function(df, stationX) {
+    year_summ <- miss_long %>%
+    filter(station == stationX) %>%
+    group_by(year, pollutant) %>%
+    summarise(pct_miss = mean(pct_miss), .groups = "drop")
+
+    ggplot(year_summ, aes(x = pollutant, y = year, fill = pct_miss)) +
+      geom_tile(colour = "white", linewidth = 0.4) +
+      scale_y_discrete(limits = rev(unique(year_summ$year))) +  # rev() puts first station at top
+      scale_fill_gradientn(
+        colours = c("#2166ac","#f7f7f7","#d73027"),
+        values  = scales::rescale(c(0, 50, 100)),
+        limits  = c(0, 100),
+        name    = "% missing"
+      ) +
+      labs(
+        title = paste0("Missingness by year and pollutant for station ", stationX),
+        x = NULL, y = NULL
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid   = element_blank()
+      )
+    
+}
+```
+
+
+```{r, echo=FALSE}
+stations <- df %>%
+    pull(station) %>%
+    unique()
+
+lapply(stations, function(x) draw_heatmaps(df, x))
+
+```
+
+Station 28079024 has the most observations!
+Also good candidates are station 28079008
+
+```{r}
+draw_heatmaps_pollutant <- function(df, pollutantX) {
+
+    
+    
+    year_summ <- miss_long %>%
+    filter(pollutant == pollutantX) %>%
+    group_by(year, station) %>%
+    summarise(pct_miss = mean(pct_miss), .groups = "drop")
+
+    ggplot(year_summ, aes(x = station, y = year, fill = pct_miss)) +
+      geom_tile(colour = "white", linewidth = 0.4) +
+      scale_y_discrete(limits = rev(unique(year_summ$year))) +  # rev() puts first station at top
+      scale_x_discrete(limits = rev(unique(year_summ$station))) +  # rev() puts first station at top
+      scale_fill_gradientn(
+        colours = c("#2166ac","#f7f7f7","#d73027"),
+        values  = scales::rescale(c(0, 50, 100)),
+        limits  = c(0, 100),
+        name    = "% missing"
+      ) +
+      labs(
+        title = paste0("Missingness by year and station for pollutant ", pollutantX),
+        x = NULL, y = NULL
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid   = element_blank()
+      )
+    
+}
+```
+
+
+```{r}
+who_agq_pollutants <- c("PM10", "PM25", "CO", "NO_2", "SO_2", "O_3")
+lapply(who_agq_pollutants, function(x) draw_heatmaps_pollutant(df, x))
+```
+
+From these data, it seems reasonable that all conclusions about air pollution will have to rely on a different subset of stations for each pollutant. This is suboptimal, as it limits comparability across pollutants. It should be made clear in the visualisations, which stations were included in the analysis of each pollutant.
+
+NO2 is the only pollutant that has been fully observed.
+
+Alternatively, we could reduce our analysis on a subset of up to e.g. 5 stations for which we have observed data for all pollutants (except PM25, which is largely unobserved).
+
+station 28079024 is the best station in terms of completeness. It even carries data for PM25 at least from year 2003 onwards. 
+
+The following stations have data for the remaining 5 pollutants:
+28079008
+
+
+```{r pressure, echo=FALSE}
+
+```
+
+
