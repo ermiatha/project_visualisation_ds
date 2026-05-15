@@ -17,6 +17,7 @@ library(viridis)
 library(data.table)
 library(gtsummary)
 library(mice)
+library(data.table)
 ```
 
 
@@ -431,8 +432,140 @@ The following stations have data for the remaining 5 pollutants:
 28079008
 
 
-```{r pressure, echo=FALSE}
+Let's prepare the dataset that will be used for the subsequent visualisations:
 
+```{r}
+df_long <- df %>%
+    pivot_longer(all_of(pollutant_cols), names_to = "pollutant", values_to = "value") 
+
+```
+
+```{r}
+df_long_WHOpollutants <- df_long %>%
+    dplyr::filter(pollutant %in% who_agq_pollutants)
+```
+
+
+Now lets calculate the AQI index based on the WHO guideline:
+
+https://document.airnow.gov/technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf 
+
+```{r}
+get_aqi <- function(C, BP_hi, BP_lo, I_hi, I_lo)  {
+
+    pollutant_value  <- (I_hi - I_lo) / (BP_hi - BP_lo) * (C - BP_lo) + I_lo 
+    return(pollutant_value)
+}
+
+```
+
+
+This is the easiest way to summarise the data based on the AQI procedure, but it
+is not feasible for the size of this dataset. We will use data.table which works faster (see below)
+```{r eval=FALSE, include=FALSE}
+# add the AQI
+df_long_daily <- df_long_WHOpollutants %>%
+  select(station, Date, hour, pollutant, value) %>%
+  group_by(station, Date, pollutant) %>%
+  summarise(
+    conc = case_when(
+      pollutant == "PM10"  ~ mean(value, na.rm=TRUE),   # 24h mean
+      pollutant == "PM2.5" ~ mean(value, na.rm=TRUE),   # 24h mean
+      pollutant == "NO_2"  ~ max(value, na.rm=TRUE),    # 1h max
+      pollutant == "SO_2"  ~ max(value, na.rm=TRUE),    # 1h max
+      pollutant == "CO"    ~ max(zoo::rollmean(value, 8, fill=NA, align="right"), na.rm=TRUE),  # 8h rolling max
+      pollutant == "O_3"   ~ max(zoo::rollmean(value, 8, fill=NA, align="right"), na.rm=TRUE)  # 8h rolling max
+    )
+  ) %>%
+  # Then apply get_aqi() with the right breakpoints per pollutant
+  mutate(aqi_sub = get_aqi(conc, BP_hi, BP_lo, I_hi, I_lo))
+```
+
+
+```{r}
+dt <- as.data.table(df_long_WHOpollutants)
+
+# Subgroup 1: mean (PM10, PM2.5)
+dt_mean <- dt[pollutant %in% c("PM10", "PM2.5"),
+              .(conc = mean(value)),
+              by = .(station, Date, pollutant)]
+
+# Subgroup 2: 1h max (NO2, SO2)
+dt_max <- dt[pollutant %in% c("NO_2", "SO_2"),
+             .(conc = max(value)),
+             by = .(station, Date, pollutant)]
+
+# Subgroup 3: 8h rolling mean then daily max (O3, CO)
+dt_roll <- dt[pollutant %in% c("O_3", "CO")]
+dt_roll[, roll8 := frollmean(value, 8, fill = NA, align = "right"),
+        by = .(station, pollutant)]  # first roll across full time series per station
+dt_roll <- dt_roll[, .(conc = max(roll8, na.rm = TRUE)), # then get max per day
+                   by = .(station, Date, pollutant)]
+
+# combine subgroups
+dt_daily <- rbindlist(list(dt_mean, dt_max, dt_roll))
+```
+
+
+We will recreate the Date variables now:
+```{r}
+dt_daily$day <- format(dt_daily$Date, "%d")
+dt_daily$month <- format(dt_daily$Date, "%m")
+dt_daily$year <- format(dt_daily$Date, "%Y")
+dt_daily$hour <- format(dt_daily$Date, "%H")
+```
+
+
+Now lets get an idea of our summarised dataset:
+```{r}
+dt_daily %>%
+    group_by(station) %>%
+    summarise(
+        n = n()
+    )
+dt_daily %>%
+    group_by(pollutant) %>%
+    summarise(
+        n = n()
+    )
+
+dt_daily %>%
+    group_by(Date) %>%
+    summarise(
+        n = n()
+    )
+
+dt_daily %>%
+    group_by(station, pollutant) %>%
+    summarise(
+        n = n()
+    )
+
+dt_daily %>%
+    group_by(year) %>%
+    summarise(
+        n = n()
+    )
+
+dt_daily %>%
+    group_by(year, station, pollutant) %>%
+    summarise(
+        n = n()
+    )
+```
+
+
+
+```{r}
+saveRDS(df_long_WHOpollutants, file = "./../data/df_long_WHOpollutants.RDS")
+saveRDS(dt_daily, file = "./../data/dt_daily.RDS")
+
+```
+
+
+
+```{r}
+lapply(who_agq_pollutants, function(x) draw_heatmaps_pollutant(df_long_WHOpollutants, x))
 ```
 
 
