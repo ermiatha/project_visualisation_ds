@@ -111,55 +111,16 @@ tab1
 
 Let's look at how missingness in pollutants varies across stations
 ```{r}
-df_summ <- df %>% select(2:15, 17:19)
+df_summ <- df %>% select(2:19)
 
 gtsummary::tbl_summary(df_summ, missing_stat = "{p_miss}", by = "station")
 ```
 
 
 
-```{r}
+We need to obtain an overview of how missingness patterns are similar across pollutants, stations and years: 
 
-
-df %>%
-    select(2:19) %>%
-    summarise(
-        CO = mean(CO, na.rm = T),
-        sd_CO = meean(CO, na.rm = T),
-        length = n(),
-        pmiss = sum(is.na(CO)) / n() * 100
-    ) %>%
-    mutate(
-        across(where(is.numeric), ~ round(.x, 2))
-    )
-
-```
-
-
-
-```{r}
-mice::md.pattern(df %>% select("CO", year))
-```
-
-```{r}
-
-```
-We need to obtain an overview of how missingness patterns are similar across pollutants, stations and years: is a missing
-
-```{r}
-df %>%
-    select(2:19) %>%
-    summarise(
-        CO = mean(CO, na.rm = T),
-        sd_CO = meean(CO, na.rm = T),
-        length = n(),
-        pmiss = sum(is.na(CO)) / n() * 100
-    ) %>%
-    mutate(
-        across(where(is.numeric), ~ round(.x, 2))
-    )
-
-```
+For example, for a given station and pollutant, we have complete data, at least on the year level:
 
 ```{r}
 df %>%
@@ -182,6 +143,7 @@ draw_boxplots <- function(df, stationX) {
 ```
 
 
+Now let's look at a single pollutant (CO) but at each station separately:
 ```{r, echo=FALSE}
 stations <- df %>%
     pull(station) %>%
@@ -273,7 +235,15 @@ miss_long %>% arrange(desc(pct_miss), station, year, pollutant) %>% View()
 
 Ok, lets see which stations suffered the most missingness:
 
+Stations with no observations at all for a given pollutant & year:
 28079004
+28079008
+28079011
+28079016
+28079017
+28079018
+28079024
+
 
 ```{r}
 station_summ <- miss_long %>%
@@ -405,6 +375,10 @@ lapply(stations, function(x) draw_heatmaps(df, x))
 
 Station 28079024 has the most observations!
 Also good candidates are station 28079008
+
+
+AIQ indicator (check out formula)
+
 
 ```{r}
 draw_heatmaps_pollutant <- function(df, pollutantX) {
