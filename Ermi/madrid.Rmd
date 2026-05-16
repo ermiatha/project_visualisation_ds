@@ -18,6 +18,7 @@ library(data.table)
 library(gtsummary)
 library(mice)
 library(data.table)
+library(lubridate)
 ```
 
 
@@ -515,6 +516,372 @@ dt_daily$year <- format(dt_daily$Date, "%Y")
 dt_daily$hour <- format(dt_daily$Date, "%H")
 ```
 
+Now we are ready to calculate the AQI on our daily-dataset:
+
+The tricky part is that we need to compare each pollution value with an interval. The trick is to turn the pollution value into an interval itself and then compare two intervals, referred to as "overlap joins". Two intervals overlap if the following condition holds:
+
+start_A <= end_B && start_B <= end_A
+
+To start we have to create lookup tables to look up the breakpoints for each pollutant:
+```{r}
+
+bp_o3 <- data.table(  #based on 8-hour interval (1h also possible)
+  pollutant = "O_3",
+  c_low  = c(0.000, 0.055, 0.071, 0.086, 0.106, 0.201),
+  c_high = c(0.054, 0.070, 0.085, 0.105, 0.200, 604),
+  i_low  = c(0, 51,101,151,201, 301),
+  i_high = c(50,100,150,200,300, 400)
+)
+
+bp_pm10 <- data.table(
+  pollutant = "PM10",
+  c_low  = c(0, 55, 155, 255, 355, 425, 505),
+  c_high = c(54,154,254,354,424,504,604),
+  i_low  = c(0, 51,101,151,201,301,401),
+  i_high = c(50,100,150,200,300,400,500)
+)
+
+bp_pm25 <- data.table(
+  pollutant = "PM2.5",
+  c_low  = c(0.0, 12.1, 35.5, 55.5, 150.5, 250.5, 350.5),
+  c_high = c(12.0, 35.4, 55.4, 150.4, 250.4, 350.4, 500.4),
+  i_low  = c(0, 51, 101, 151, 201, 301, 401),
+  i_high = c(50,100,150,200,300,400,500)
+)
+
+bp_co <- data.table(
+  pollutant = "CO",
+  c_low  = c(0.0, 4.5, 9.5, 12.5, 15.5, 30.5, 40.5),
+  c_high = c(4.4, 9.4, 12.4, 15.4, 30.4, 40.4, 50.4),
+  i_low  = c(0, 51,101,151,201,301,401),
+  i_high = c(50,100,150,200,300,400,500)
+)
+
+bp_so2 <- data.table(
+  pollutant = "SO_2",
+  c_low  = c(0, 36, 76, 186, 305, 605, 805),
+  c_high = c(35, 75, 185, 304, 604, 804, 1004),
+  i_low  = c(0, 51,101,151,201,301,401),
+  i_high = c(50,100,150,200,300,400,500)
+)
+
+bp_no2 <- data.table(
+  pollutant = "NO_2",
+  c_low  = c(0, 54, 101, 361, 650, 1250, 1650),
+  c_high = c(53,100,360,649,1249,1649,2049),
+  i_low  = c(0, 51,101,151,201,301,401),
+  i_high = c(50,100,150,200,300,400,500)
+)
+
+bp_all <- rbindlist(list(
+  bp_pm10,
+  bp_pm25,
+  bp_o3,
+  bp_co,
+  bp_so2,
+  bp_no2
+))
+
+rm(bp_pm10, bp_pm25, bp_o3, bp_co, bp_so2, bp_no2)
+```
+
+
+```{r}
+setDT(dt_daily)
+
+dt_daily[, conc_num := as.numeric(conc)]
+
+dt_aqi <- dt_daily
+dt_aqi <- dt_daily[!is.na(conc_num)]  # deletes ~ 170000 obs. check if all PM2.5 values are excluded in this step
+
+dt_aqi[, `:=`(
+  conc_low = conc_num,
+  conc_high = conc_num
+)]
+
+setkey(dt_aqi, pollutant, conc_low, conc_high)
+setkey(bp_all, pollutant, c_low, c_high)
+
+aqi_joined <- foverlaps(
+  dt_aqi,
+  bp_all,
+  by.x = c("pollutant", "conc_low", "conc_high"),
+  by.y = c("pollutant", "c_low", "c_high"),
+  nomatch = NA
+)
+
+aqi_joined[, AQI :=
+  round(
+    ((i_high - i_low) / (c_high - c_low)) *
+      (conc_num - c_low) + i_low
+  )
+]
+```
+We can now also determine the overall AQI and summarise over all pollutants. Lets also save which pollutant is responsible
+```{r}
+daily_overall <- aqi_joined[
+  ,
+  .(
+    overall_AQI = max(AQI, na.rm = TRUE),
+    responsible_pollutant = pollutant[which.max(AQI)]
+  ),
+  by = .(station, Date)
+]
+```
+
+Now lets create a new category for visualising later:
+```{r}
+aqi_joined[,
+  
+  `:=`(
+
+    AQI_color = fifelse(
+      AQI <= 50, "#00E400",
+      fifelse(
+        AQI <= 100, "#FFFF00",
+        fifelse(
+          AQI <= 150, "#FF7E00",
+          fifelse(
+            AQI <= 200, "#FF0000",
+            fifelse(
+              AQI <= 300, "#8F3F97",
+              "#7E0023"
+            ))))))
+  ]
+```
+
+```{r}
+get_aqi_categorical <- function(aqi_var) {
+
+  cut(
+    aqi_var,
+    breaks = c(-Inf, 50, 100, 150, 200, 300, Inf),
+    labels = c(
+      "Good",
+      "Moderate",
+      "Unhealthy for Sensitive Groups",
+      "Unhealthy",
+      "Very Unhealthy",
+      "Hazardous"
+    )
+  )
+}
+```
+
+```{r}
+aqi_joined[, AQI_category := get_aqi_categorical(AQI)]
+
+daily_overall[, AQI_category := get_aqi_categorical(overall_AQI)]
+```
+
+So now we are ready to get some visualisations:
+```{r}
+aqi_cols <- c(
+  "Good" = "#00E400",
+  "Moderate" = "#FFFF00",
+  "Unhealthy for Sensitive Groups" = "#FF7E00",
+  "Unhealthy" = "#FF0000",
+  "Very Unhealthy" = "#8F3F97",
+  "Hazardous" = "#7E0023"
+)
+
+
+ggplot(
+  daily_overall,
+  aes(Date, overall_AQI, color = AQI_category)
+) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = aqi_cols) +
+  theme_minimal() +
+  labs(
+    title = "Daily AQI",
+    y = "AQI",
+    color = "Category"
+  )
+
+```
+
+```{r}
+ggplot(
+  daily_overall,
+  aes(Date, factor(station), fill = AQI_category)
+) +
+  geom_tile() +
+  scale_fill_manual(values = aqi_cols) +
+  theme_minimal() +
+  labs(
+    x = "Date",
+    y = "Station",
+    fill = "AQI"
+  )
+```
+Ok, from further below we know that this is largely driven by Ozone levels.
+Let's look at the pollutant-level-AQIs:
+```{r}
+aqi_pollutants <- c("PM10", "CO", "NO_2", "SO_2", "O_3")
+
+
+draw_aqi_heatmaps_pollutant <- function(df, pollutantX) {
+    aqi_joined %>% 
+    filter(
+        pollutant == pollutantX) %>%
+ggplot(
+  aes(Date, factor(station), fill = AQI_categorical)
+) +
+  geom_tile() +
+  scale_fill_manual(values = aqi_cols) +
+  theme_minimal() +
+  labs(
+    title = paste0("AQI value for pollutant ", pollutantX),
+    x = "Date",
+    y = "Station",
+    fill = "AQI"
+  ) 
+}
+
+lapply(aqi_pollutants, function(x) draw_aqi_heatmaps_pollutant(df, x))
+```
+
+There is no apparent strong heterogeneous change of AQI over time depending on the station. Thus, we will not look at the data on the station level anymore for the subsequent analyses. We are interested in the overall air quality levels in Madrid. 
+
+In addition, we know that through selective missingness patterns, each station is composed of a different number of observations and pollutants. Thus, comparing overall AQI levels on the station level seems, to say the least, questionable.
+
+```{r}
+ggplot(
+  aqi_joined,
+  aes(Date, AQI, color = pollutant)
+) +
+  geom_line(alpha = 0.4) +
+  facet_wrap(~ pollutant, scales = "free_y") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(
+  aqi_joined,
+  aes(Date, factor(station), fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ pollutant) +
+  scale_fill_gradientn(colors = unname(aqi_cols)) +
+  theme_minimal()
+```
+```{r}
+
+aqi_joined[, `:=`(
+  year = lubridate::year(Date),
+  month = lubridate::month(Date, label = T),
+  day = lubridate::day(Date)
+)]
+```
+
+```{r}
+ggplot(
+  aqi_joined[pollutant == "PM10"],
+  aes(day, month, fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ year) +
+  scale_fill_gradientn(colors = unname(aqi_cols))
+
+ggplot(
+  aqi_joined[pollutant == "NO_2"],
+  aes(day, month, fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ year) +
+  scale_fill_gradientn(colors = unname(aqi_cols))
+
+ggplot(
+  aqi_joined[pollutant == "CO"],
+  aes(day, month, fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ year) +
+  scale_fill_gradientn(colors = unname(aqi_cols))
+
+ggplot(
+  aqi_joined[pollutant == "O_3"],
+  aes(day, month, fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ year) +
+  scale_fill_gradientn(colors = unname(aqi_cols))
+
+ggplot(
+  aqi_joined[pollutant == "SO_2"],
+  aes(day, month, fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ year) +
+  scale_fill_gradientn(colors = unname(aqi_cols))
+
+
+```
+
+Overall this is good news: Air quality has improved over the years based on these 5 pollutants. Except for Ozone, which is at a bad level throughout the years. 
+
+We could design this as interactive plot. The interactive element should be the Pollutant, chosen by the user as dropdown. The evolution over the years should always appear within one given visualisation. 
+
+First, we need to adapt the visualisation to make it more readable:
+
+```{r}
+
+# remove years with NA -> this should solve months NAs too
+
+
+# resort the months y-axis: from jan-dez
+
+
+# more sparse data presentation: only present years 2001, 2005, 2009, 2013, 2017
+
+# or even top 3: 2001, 2009, 2017
+
+
+# 
+
+
+
+```
+
+
+
+
+```{r}
+aqi_joined[, season := fifelse(
+  month(Date) %in% c(12,1,2), "Winter",
+  fifelse(
+    month(Date) %in% c(3,4,5), "Spring",
+    fifelse(
+      month(Date) %in% c(6,7,8), "Summer",
+      "Autumn"
+    )
+  )
+)]
+
+ggplot(
+  aqi_joined,
+  aes(season, AQI, fill = pollutant)
+) +
+  geom_boxplot(outlier.alpha = 0.1)
+```
+
+
+```{r}
+
+ggplot(
+  daily_overall,
+  aes(Date, factor(station), fill = responsible_pollutant)
+) +
+  geom_tile()
+```
+
+This is an important insight. It shows us that Overall Pollution Level as measured by the Overall AQI is almost entirely driven by Ozone levels, and, partly, by NO2.
+
+We should get the same result if we use the aqi_joined dataset and summarise over pollutant, via choosing the maximum.
+
+
+
 
 Now lets get an idea of our summarised dataset:
 ```{r}
@@ -559,6 +926,18 @@ dt_daily %>%
 ```{r}
 saveRDS(df_long_WHOpollutants, file = "./../data/df_long_WHOpollutants.RDS")
 saveRDS(dt_daily, file = "./../data/dt_daily.RDS")
+
+```
+
+
+*ALTERNATIVE APPROACH*
+The AirMonitor package offers functionality to calculate AQI directly - however, this is available for PM2.5 and O_3.
+
+```{r}
+library(AirMonitor)
+
+
+dt_daily_wide <- dcast(dt_daily, station + Date ~ pollutant, value.var = "conc")
 
 ```
 
