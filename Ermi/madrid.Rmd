@@ -630,7 +630,9 @@ daily_overall <- aqi_joined[
 ```
 
 Now lets create a new category for visualising later:
-```{r}
+```{r eval=FALSE, include=FALSE}
+
+### 
 aqi_joined[,
   
   `:=`(
@@ -669,10 +671,17 @@ get_aqi_categorical <- function(aqi_var) {
 ```
 
 ```{r}
-aqi_joined[, AQI_category := get_aqi_categorical(AQI)]
+aqi_joined[, AQI_categorical := get_aqi_categorical(AQI)]
 
-daily_overall[, AQI_category := get_aqi_categorical(overall_AQI)]
+daily_overall[, AQI_categorical := get_aqi_categorical(overall_AQI)]
 ```
+
+Let's save our dataset to import it later for the visualisations:
+
+```{r}
+
+```
+
 
 So now we are ready to get some visualisations:
 ```{r}
@@ -688,7 +697,7 @@ aqi_cols <- c(
 
 ggplot(
   daily_overall,
-  aes(Date, overall_AQI, color = AQI_category)
+  aes(Date, overall_AQI, color = AQI_categorical)
 ) +
   geom_point(alpha = 0.7) +
   scale_color_manual(values = aqi_cols) +
@@ -704,7 +713,7 @@ ggplot(
 ```{r}
 ggplot(
   daily_overall,
-  aes(Date, factor(station), fill = AQI_category)
+  aes(Date, factor(station), fill = AQI_categorical)
 ) +
   geom_tile() +
   scale_fill_manual(values = aqi_cols) +
@@ -723,24 +732,51 @@ aqi_pollutants <- c("PM10", "CO", "NO_2", "SO_2", "O_3")
 
 draw_aqi_heatmaps_pollutant <- function(df, pollutantX) {
     aqi_joined %>% 
-    filter(
-        pollutant == pollutantX) %>%
-ggplot(
-  aes(Date, factor(station), fill = AQI_categorical)
-) +
-  geom_tile() +
-  scale_fill_manual(values = aqi_cols) +
-  theme_minimal() +
-  labs(
-    title = paste0("AQI value for pollutant ", pollutantX),
-    x = "Date",
-    y = "Station",
-    fill = "AQI"
-  ) 
+        filter(pollutant == pollutantX) %>%
+        nrow(.) %>% print()
+    aqi_joined %>% 
+        filter(pollutant == pollutantX) %>%
+    ggplot(
+      aes(Date, factor(station), fill = AQI_categorical)
+    ) +
+      geom_tile() +
+      scale_fill_manual(values = aqi_cols) +
+      theme_minimal() +
+      labs(
+        title = paste0("AQI value for pollutant ", pollutantX),
+        x = "Date",
+        y = "Station",
+        fill = "AQI"
+      ) 
 }
 
 lapply(aqi_pollutants, function(x) draw_aqi_heatmaps_pollutant(df, x))
 ```
+
+Same information, but more densely presented:
+```{r}
+
+ggplot(
+  aqi_joined,
+  aes(Date, factor(station), fill = AQI)
+) +
+  geom_tile() +
+  facet_wrap(~ pollutant) +
+  scale_fill_gradientn(colors = unname(aqi_cols)) +
+  theme_minimal()
+
+ggplot(
+  aqi_joined,
+  aes(Date, factor(station), fill = AQI_categorical)
+) +
+  geom_tile() +
+  facet_wrap(~ pollutant) +
+  scale_fill_manual(values = aqi_cols) +
+  theme_minimal()
+
+
+```
+
 
 There is no apparent strong heterogeneous change of AQI over time depending on the station. Thus, we will not look at the data on the station level anymore for the subsequent analyses. We are interested in the overall air quality levels in Madrid. 
 
@@ -756,16 +792,7 @@ ggplot(
   theme_minimal()
 ```
 
-```{r}
-ggplot(
-  aqi_joined,
-  aes(Date, factor(station), fill = AQI)
-) +
-  geom_tile() +
-  facet_wrap(~ pollutant) +
-  scale_fill_gradientn(colors = unname(aqi_cols)) +
-  theme_minimal()
-```
+
 ```{r}
 
 aqi_joined[, `:=`(
@@ -926,6 +953,10 @@ dt_daily %>%
 ```{r}
 saveRDS(df_long_WHOpollutants, file = "./../data/df_long_WHOpollutants.RDS")
 saveRDS(dt_daily, file = "./../data/dt_daily.RDS")
+saveRDS(aqi_joined, file = "./../data/aqi_joined.RDS")
+saveRDS(daily_overall, file = "./../data/daily_overall.RDS")
+
+
 
 ```
 
