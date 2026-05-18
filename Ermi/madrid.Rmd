@@ -50,7 +50,7 @@ stations <- read.csv("./stations.csv")
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 View(allfiles[[1]])
 ```
 
@@ -379,8 +379,36 @@ Station 28079024 has the most observations!
 Also good candidates are station 28079008
 
 
-AIQ indicator (check out formula)
+```{r}
+df %>% select(station, name) %>% unique()
 
+```
+
+*station                   name*
+28079035        Pza. del Carmen
+28079004         Pza. de España
+28079039       Barrio del Pilar
+28079038         Cuatro Caminos
+28079011    Avda. Ramón y Cajal
+28079040               Vallecas
+28079016           Arturo Soria
+28079018              Farolillo
+28079036              Moratalaz
+28079024          Casa de Campo
+28079017             Villaverde
+28079008       Escuelas Aguirre
+28079027         Barajas Pueblo
+28079057            Sanchinarro
+28079058               El Pardo
+28079054   Ensanche de Vallecas
+28079059          Juan Carlos I
+28079047          Mendez Alvaro
+28079049      Parque del Retiro
+28079050         Plaza Castilla
+28079055          Urb. Embajada
+28079056 Pza. Fernández Ladreda
+28079060            Tres Olivos
+28079048             Castellana
 
 ```{r}
 draw_heatmaps_pollutant <- function(df, pollutantX) {
@@ -951,7 +979,9 @@ dt_daily %>%
 
 
 ```{r}
+
 saveRDS(df_long_WHOpollutants, file = "./../data/df_long_WHOpollutants.RDS")
+saveRDS(df, file = "./../data/df.RDS")
 saveRDS(dt_daily, file = "./../data/dt_daily.RDS")
 saveRDS(aqi_joined, file = "./../data/aqi_joined.RDS")
 saveRDS(daily_overall, file = "./../data/daily_overall.RDS")
