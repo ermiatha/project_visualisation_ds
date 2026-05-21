@@ -7,7 +7,7 @@ build_radar_plot <- function(df, selected_year = 2008) {
     summarise(across(all_of(gases), ~mean(.x, na.rm = TRUE)), .groups = "drop") |>
     mutate(score = rowMeans(across(all_of(gases)), na.rm = TRUE)) |>
     arrange(desc(score)) |>
-    slice_head(n = 6) |>
+    slice_head(n = 10) |>
     pull(name)
 
   radar_prep <- df |>
@@ -28,5 +28,5 @@ build_radar_plot <- function(df, selected_year = 2008) {
     cglwd = 0.8, vlcex = 0.85,
     title = paste("Pollutant Footprint Across Top Stations -", selected_year)
   )
-  legend("topright", legend = colnames(radar_df), bty = "n", pch = 20, col = gas_colors, cex = 0.8, pt.cex = 1.5)
+  legend("topright", legend = rownames(radar_df), bty = "n", pch = 20, col = gas_colors, cex = 0.8, pt.cex = 1.5)
 }
