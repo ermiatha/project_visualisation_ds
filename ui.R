@@ -115,27 +115,80 @@ ui <- bslib::page_fillable(
         ),
 
         conditionalPanel(
-          condition = "input.nav_to == 'indicators'",
-          tags$section(
-            class = "content-section",
-            tags$div(
-              class = "filter-panel",
-              tags$div(class = "filter-item", selectInput("pollutant", "Choose Pollutant", pollutant_choices, selected = "All")),
-              tags$div(class = "filter-item", selectInput("radar_year", "Radar Year", year_choices, selected = 2008)),
-              tags$div(class = "filter-item download-filter", downloadButton("download_filtered", "Download Filtered Data", class = "btn btn-success"))
-            ),
-            uiOutput("kpi_cards"),
-            tags$div(
-              class = "plot-grid two",
-              make_plot_card("heatmap", "AQI Calendar Heatmap", plotOutput("plt_heatmap_over_time", height = "430px"), tagList(helpText("Use pollutant filters to update the heatmap."))),
-              make_plot_card("lineplot", "Pollution Evolution Over the Years", plotOutput("plt_lineplot_stations", height = "430px"), tagList(helpText("Displays the most polluted stations over time.")))
-            ),
-            tags$div(
-              class = "plot-grid one",
-              make_plot_card("radar", "Pollution Across Stations", plotOutput("plt_radar_over_time", height = "560px"), tagList(helpText("Change the year from the filter panel.")))
-            ),
-            tags$div(class = "data-card", tags$h4("Filtered Dataset"), DTOutput("pollutant_table"))
-          )
+            condition = "input.nav_to == 'indicators'",
+            tags$section(
+                class = "content-section",
+                
+                # Top filter panel
+                tags$div(
+                    class = "filter-panel",
+                    tags$div(
+                        class = "filter-item",
+                        selectInput("pollutant", "Choose Pollutant",
+                                    pollutant_choices,
+                                    selected = "All")
+                    ),
+                   
+                    tags$div(
+                        class = "filter-item download-filter",
+                        downloadButton("download_filtered",
+                                       "Download Filtered Data",
+                                       class = "btn btn-success")
+                    )
+                ),
+                
+                uiOutput("kpi_cards"),
+                
+                tags$div(
+                    class = "plot-grid two",
+                    
+                    make_plot_card(
+                        "heatmap",
+                        "AQI Calendar Heatmap",
+                        plotOutput("plt_heatmap_over_time", height = "430px"),
+                        tagList(helpText("Use pollutant filters to update the heatmap."))
+                    ),
+                    
+                    make_plot_card(
+                        "lineplot",
+                        "Pollution Evolution Over the Years",
+                        plotOutput("plt_lineplot_stations", height = "430px"),
+                        tagList(helpText("Displays the most polluted stations over time."))
+                    )
+                ),
+                
+                # Radar section
+                tags$div(
+                    class = "plot-grid one",
+                    
+                    make_plot_card(
+                        "radar",
+                        "Pollution Across Stations",
+                        
+                        tagList(
+                            tags$div(
+                                class = "filter-panel",
+                                tags$div(
+                                    class = "filter-item",
+                                    sliderInput(
+                                        inputId = "radar_year",
+                                        label = "Radar Year",
+                                        min = min(as.numeric(as.character(madrid_complete$year)), na.rm = TRUE),
+                                        max = max(as.numeric(as.character(madrid_complete$year)), na.rm = TRUE),
+                                        value = 2008,
+                                        step = 1,
+                                        sep = ""
+                                    )
+                                )
+                            ),
+                            
+                            plotOutput("plt_radar_over_time", height = "560px"),
+                            
+                            helpText("Change the year from the filter panel.")
+                        )
+                    )
+                )
+            )
         ),
 
         conditionalPanel(
