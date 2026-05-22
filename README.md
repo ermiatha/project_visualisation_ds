@@ -4,6 +4,10 @@ This repository contains a Shiny dashboard for the Madrid air pollution visualis
 
 <img src="screenshots_gifs/home.png" width="500" alt="Home">
 
+## Screencast
+
+A Youtube Video demonstrating the dashboard can be found at https://www.youtube.com/watch?v=masXG2O_Q0U 
+
 ## Data
 
 The dataset contains repeated measurements from 17 different pollutants across 24 different regions of Madrid between 2001 and 2018. The aim of the project is to analyse this dataset and present it to the population of Madrid, to inform inhabitants about the problem of air pollution in their city.
