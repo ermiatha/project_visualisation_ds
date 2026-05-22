@@ -187,6 +187,18 @@ ui <- bslib::page_fillable(
                             helpText("Change the year from the filter panel.")
                         )
                     )
+                ),
+                
+                # hourly line plot
+                tags$div(
+                    class = "plot-grid one",
+                    
+                    make_plot_card(
+                        "heatmap",
+                        "Hourly Pollution Variation",
+                        plotOutput("plt_hourly_lineplot", height = "430px")
+                      
+                    )
                 )
             )
         ),

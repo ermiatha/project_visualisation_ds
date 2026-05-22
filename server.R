@@ -33,6 +33,11 @@ server <- function(input, output, session) {
   output$madrid_pollution_plot <- renderUI({
     tags$iframe(src = "generated/madrid_pollution.html", width = "100%", height = "650px", style = "border:0;background:white;border-radius:16px;")
   })
+  
+  output$plt_hourly_lineplot <- renderPlot({
+      build_hourly_line_plot(madrid_complete)
+  }, res = 100)
+  
 
   output$members_table <- DT::renderDT({
     DT::datatable(team_members, options = list(pageLength = 8, dom = "tip"), rownames = FALSE)
