@@ -14,9 +14,7 @@ server <- function(input, output, session) {
     )
   })
 
-  output$pollutant_table <- DT::renderDT({
-    DT::datatable(filtered_aqi(), options = list(pageLength = 8, scrollX = TRUE), rownames = FALSE)
-  })
+
 
   output$plt_heatmap_over_time <- renderPlot({
     build_heatmap_plot(filtered_aqi())

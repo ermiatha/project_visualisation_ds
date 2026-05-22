@@ -19,7 +19,7 @@ empty_plot <- function(message = "No data available for the selected filters.") 
 }
 
 team_members <- data.frame(
-  Name = c("Silas Ooko", "Ermioni", "Steve Omollo", "Pallavi"),
-  StudentNumber = c("2501260", "ADMN", "ADMN", "ADMN"),
+  Name = c("Silas Ooko", "Ermioni Athanasiadi", "Steve Omollo", "Pallavi"),
+  StudentNumber = c("2501260", "2365990", "ADMN", "ADMN"),
   stringsAsFactors = FALSE
 )
